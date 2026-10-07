@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useState } from 'react';
 import { initialObjects } from './data';
 import Dialog from './components/Dialog';
 import Pagination from './components/Pagination';
 import SpaceObjectCard from './assets/SpaceObjCard';
 import SpaceObjectForm from './assets/SpaceObjForm';
 import './app.css';
+
+const ITEMS_PER_PAGE = 5;
 
 export default function App() {
   const [objects, setObjects] = useState(initialObjects);
@@ -13,95 +15,145 @@ export default function App() {
   const [sortBy, setSortBy] = useState('name_asc');
   const [currentPage, setCurrentPage] = useState(1);
   const [isFormOpen, setIsFormOpen] = useState(false);
-  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [editingObject, setEditingObject] = useState(null);
   const [objectToDelete, setObjectToDelete] = useState(null);
 
-  const ITEMS_PER_PAGE = 5;
+  let shownObjects = objects.filter((object) => {
+    return object.name.toLowerCase().includes(search.toLowerCase());
+  });
 
-  const processedObjects = useMemo(() => {
-    let result = objects.filter(object => object.name.toLowerCase().includes(search.toLowerCase()));
-    if (filterType) result = result.filter(object => object.type === filterType);
-    result.sort((a, b) => {
-      const direction = sortBy === 'name_asc' ? 1 : -1;
-      return direction * a.name.localeCompare(b.name);
-    });
-    return result;
-  }, [objects, search, filterType, sortBy]);
+  if (filterType !== '') {
+    shownObjects = shownObjects.filter((object) => object.type === filterType);
+  }
 
-  const totalPages = Math.ceil(processedObjects.length / ITEMS_PER_PAGE);
-  useEffect(() => {
-    if (totalPages === 0) setCurrentPage(1);
-    else if (currentPage > totalPages) setCurrentPage(totalPages);
-  }, [currentPage, totalPages]);
-  const paginatedObjects = processedObjects.slice(
-    (currentPage - 1) * ITEMS_PER_PAGE,
-    currentPage * ITEMS_PER_PAGE
-  );
+  shownObjects.sort((a, b) => a.name.localeCompare(b.name));
+  if (sortBy === 'name_desc') {
+    shownObjects.reverse();
+  }
 
-  const handleSave = (objectData) => {
+  const totalPages = Math.ceil(shownObjects.length / ITEMS_PER_PAGE);
+
+  let page = currentPage;
+  if (page > totalPages) {
+    page = totalPages;
+  }
+  if (page < 1) {
+    page = 1;
+  }
+
+  const start = (page - 1) * ITEMS_PER_PAGE;
+  const pageObjects = shownObjects.slice(start, start + ITEMS_PER_PAGE);
+
+  function openAdd() {
+    setEditingObject(null);
+    setIsFormOpen(true);
+  }
+
+  function openEdit(object) {
+    setEditingObject(object);
+    setIsFormOpen(true);
+  }
+
+  function handleSave(objectData) {
     if (objectData.id) {
-      setObjects(objects.map(object => object.id === objectData.id ? objectData : object));
+      const updatedObjects = objects.map((object) => {
+        if (object.id === objectData.id) {
+          return objectData;
+        }
+        return object;
+      });
+      setObjects(updatedObjects);
     } else {
       setObjects([...objects, { ...objectData, id: Date.now() }]);
     }
     setIsFormOpen(false);
-  };
+  }
 
-  const confirmDelete = () => {
-    setObjects(objects.filter(object => object.id !== objectToDelete.id));
-    setIsDeleteOpen(false);
+  function confirmDelete() {
+    setObjects(objects.filter((object) => object.id !== objectToDelete.id));
     setObjectToDelete(null);
-  };
+  }
 
-  const openEdit = (object) => {
-    setEditingObject(object);
-    setIsFormOpen(true);
-  };
+  function handleSearchChange(event) {
+    setSearch(event.target.value);
+    setCurrentPage(1);
+  }
 
-  const openAdd = () => {
-    setEditingObject(null);
-    setIsFormOpen(true);
-  };
+  function handleFilterChange(event) {
+    setFilterType(event.target.value);
+    setCurrentPage(1);
+  }
 
-  const resetPage = setter => event => { setter(event.target.value); setCurrentPage(1); };
+  function handleSortChange(event) {
+    setSortBy(event.target.value);
+  }
+
+  let formTitle = 'Dodaj obiekt';
+  if (editingObject !== null) {
+    formTitle = 'Edytuj obiekt';
+  }
+
+  let deleteName = '';
+  if (objectToDelete !== null) {
+    deleteName = objectToDelete.name;
+  }
 
   return (
     <main className="container">
       <header>
-        <div><h1>Obiekty kosmiczne</h1></div>
+        <h1>Obiekty kosmiczne</h1>
         <button onClick={openAdd} className="btn-primary">+ Dodaj obiekt</button>
       </header>
 
       <div className="controls">
-        <input type="text" placeholder="Szukaj po nazwie" value={search} onChange={resetPage(setSearch)} />
-        <select value={filterType} onChange={resetPage(setFilterType)}>
+        <input type="text" placeholder="Szukaj po nazwie" value={search} onChange={handleSearchChange} />
+
+        <select value={filterType} onChange={handleFilterChange}>
           <option value="">Wszystkie typy</option>
-          <option>Planeta</option><option>Galaktyka</option><option>Księżyc</option><option>Mgławica</option><option>Gromada</option>
+          <option value="Planeta">Planeta</option>
+          <option value="Galaktyka">Galaktyka</option>
+          <option value="Księżyc">Księżyc</option>
+          <option value="Mgławica">Mgławica</option>
+          <option value="Gromada">Gromada</option>
         </select>
-        <select value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
+
+        <select value={sortBy} onChange={handleSortChange}>
           <option value="name_asc">Nazwa A-Z</option>
           <option value="name_desc">Nazwa Z-A</option>
         </select>
       </div>
 
-      {paginatedObjects.length > 0 ? (
-        <div className="list">
-          {paginatedObjects.map(object => <SpaceObjectCard key={object.id} object={object} onEdit={openEdit} onDelete={objectToRemove => { setObjectToDelete(objectToRemove); setIsDeleteOpen(true); }} />)}
-        </div>
-      ) : (
+      {pageObjects.length === 0 && (
         <div className="empty-message">Brak obiektów spełniających kryteria.</div>
       )}
 
-      <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
+      <div className="list">
+        {pageObjects.map((object) => (
+          <SpaceObjectCard
+            key={object.id}
+            object={object}
+            onEdit={openEdit}
+            onDelete={setObjectToDelete}
+          />
+        ))}
+      </div>
 
-      <Dialog isOpen={isFormOpen} title={editingObject ? 'Edytuj obiekt' : 'Dodaj obiekt'} onClose={() => setIsFormOpen(false)}>
-        <SpaceObjectForm initialData={editingObject} onSubmit={handleSave} onCancel={() => setIsFormOpen(false)} />
+      <Pagination currentPage={page} totalPages={totalPages} onPageChange={setCurrentPage} />
+
+      <Dialog isOpen={isFormOpen} title={formTitle} onClose={() => setIsFormOpen(false)}>
+        <SpaceObjectForm
+          initialData={editingObject}
+          onSubmit={handleSave}
+          onCancel={() => setIsFormOpen(false)}
+        />
       </Dialog>
 
-      <Dialog isOpen={isDeleteOpen} title="Usunąć obiekt?" onClose={() => setIsDeleteOpen(false)}>
-        <p>Usuwasz: <strong>{objectToDelete?.name}</strong>.</p>
-        <div className="form-actions"><button onClick={confirmDelete} className="btn-danger">Usuń</button><button onClick={() => setIsDeleteOpen(false)} className="btn-secondary">Anuluj</button></div>
+      <Dialog isOpen={objectToDelete !== null} title="Usunąć obiekt?" onClose={() => setObjectToDelete(null)}>
+        <p>Usuwasz: <strong>{deleteName}</strong>.</p>
+        <div className="form-actions">
+          <button onClick={confirmDelete} className="btn-danger">Usuń</button>
+          <button onClick={() => setObjectToDelete(null)} className="btn-secondary">Anuluj</button>
+        </div>
       </Dialog>
     </main>
   );
